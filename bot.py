@@ -1,35 +1,46 @@
-import requests
-import re
-import time
+import logging
+import signal
+import sys
+import feedparser
+import os
+import json
 
-class Bot:
-    def __init__(self):
-        self.base_url = 'http://example.com/api'
+TOKEN = '8667405332:AAGCSc68ZbvYof0EZ63WTghIOgAAMTGWDQo'
+STATE_FILE = 'data/state.json'
 
-    def fetch_data(self):
-        try:
-            response = requests.get(self.base_url, timeout=10)
-            response.raise_for_status()  # Raise an error for bad responses
-            return response.json()
-        except requests.exceptions.HTTPError as http_err:
-            print(f'HTTP error occurred: {http_err}')
-        except requests.exceptions.Timeout:
-            print('The request timed out')
-        except requests.exceptions.RequestException as err:
-            print(f'An error occurred: {err}')
-        return None
+logging.basicConfig(level=logging.INFO)
 
-    def process_data(self, data):
-        if data:
-            pattern = re.compile(r'\b\d{3}\b')  # Example regex pattern
-            for item in data:
-                if pattern.search(item['field']):
-                    print(f'Match found: {item}')  
-                else:
-                    print('No match found')
+class PersistentState:
+    def __init__(self, filename):
+        self.filename = filename
+        self.state = self.load_state()
 
-# Example usage
+    def load_state(self):
+        if os.path.exists(self.filename):
+            with open(self.filename, 'r') as f:
+                return json.load(f)
+        return {}
+
+    def save_state(self):
+        with open(self.filename, 'w') as f:
+            json.dump(self.state, f)
+
+state = PersistentState(STATE_FILE)
+
+def handle_signal(signal, frame):
+    logging.info("Graceful shutdown.")
+    state.save_state()
+    sys.exit(0)
+
+def monitor_gauteng_security_incidents():
+    url = 'https://gauteng.gov.za/security-incidents'
+    feed = feedparser.parse(url, agent='SentinelSA Bot', timeout=10)
+    for entry in feed.entries:
+        # Implement your monitoring logic here
+        logging.info(f'Incident found: {entry.title}')
+
 if __name__ == '__main__':
-    bot = Bot()
-    data = bot.fetch_data()
-    bot.process_data(data)
+    signal.signal(signal.SIGINT, handle_signal)
+    logging.info("Starting SentinelSA Telegram bot.")
+    while True:
+        monitor_gauteng_security_incidents()
